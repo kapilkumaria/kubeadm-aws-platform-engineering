@@ -1,9 +1,10 @@
 module "vpc" {
   source = "../../modules/vpc"
 
+  project              = "kubeadm-aws-platform"
   environment          = var.environment                 # prod
   vpc_cidr             = var.vpc_cidr
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  aws_region           = var.aws_region
+  availability_zones    = var.availability_zones
 }

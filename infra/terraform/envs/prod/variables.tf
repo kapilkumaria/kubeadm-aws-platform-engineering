@@ -7,6 +7,7 @@ variable "aws_region" {
 variable "environment" {
   description = "Environment name (dev or prod)"
   type        = string
+  default    = "prod"
 }
 
 variable "vpc_cidr" {
@@ -25,4 +26,9 @@ variable "private_subnet_cidrs" {
   description = "List of private subnets"
   type        = list(string)
   default     = ["10.0.3.0/24", "10.0.4.0/24"]
+}
+
+variable "availability_zones" {
+  type    = list(string)
+  default = ["us-east-1a", "us-east-1b"]
 }
