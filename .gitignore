@@ -99,3 +99,7 @@ jenkins.log
 # ---------------------------------------------------
 # Ensure that no backend state file is pushed manually
 backend.tf
+
+# BFG Cleaner files
+bfg.jar
+.bfg-report/
