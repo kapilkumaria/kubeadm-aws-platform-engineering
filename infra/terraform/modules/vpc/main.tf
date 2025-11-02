@@ -20,13 +20,14 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
+# Public Subnets
 resource "aws_subnet" "public" {
-  for_each = toset(var.public_subnet_cidrs)
+  for_each = { for index, cidr in var.public_subnet_cidrs : index => cidr }
 
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = each.value
-  availability_zone       = var.availability_zones[tonumber(each.key)]
   map_public_ip_on_launch = true
+  availability_zone       = var.availability_zones[each.key]
 
   tags = {
     Name        = "${var.project}-${var.environment}-public-${each.key}"
@@ -35,12 +36,13 @@ resource "aws_subnet" "public" {
   }
 }
 
+# Private Subnets
 resource "aws_subnet" "private" {
-  for_each = toset(var.private_subnet_cidrs)
+  for_each = { for index, cidr in var.private_subnet_cidrs : index => cidr }
 
   vpc_id            = aws_vpc.vpc.id
   cidr_block        = each.value
-  availability_zone = var.availability_zones[tonumber(each.key)]
+  availability_zone = var.availability_zones[each.key]
 
   tags = {
     Name        = "${var.project}-${var.environment}-private-${each.key}"
@@ -49,21 +51,21 @@ resource "aws_subnet" "private" {
   }
 }
 
+
 # Elastic IP for NAT Gateway
 resource "aws_eip" "nat" {
-  count = 1
-  vpc   = true
+  domain = "vpc"
 
   tags = {
-    Name        = "${var.project}-${var.environment}-nat-eip"
+    Name = "${var.project}-${var.environment}-eip-nat"
     Environment = var.environment
     Project     = var.project
   }
 }
 
 resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat[0].id
-  subnet_id     = aws_subnet.public_subnets[0].id
+  allocation_id = aws_eip.nat.id
+  subnet_id     = values(aws_subnet.public)[0].id
 
   tags = {
     Name        = "${var.project}-${var.environment}-nat"
@@ -90,9 +92,9 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public_assoc" {
-  for_each = aws_subnet.public_subnets
+  for_each = aws_subnet.public
+  subnet_id = each.value.id
 
-  subnet_id      = each.value.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -112,7 +114,7 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private_assoc" {
-  for_each = aws_subnet.private_subnets
+  for_each = aws_subnet.private
 
   subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
