@@ -1,9 +1,9 @@
-output "master_private_ip" {
-  value       = aws_instance.master.private_ip
-  description = "Private IP of the Kubernetes Master"
+output "instance_id" {
+  description = "Master EC2 Instance ID"
+  value       = aws_instance.master.id
 }
 
-output "master_id" {
-  value       = aws_instance.master.id
-  description = "Instance ID of master"
+output "private_ip" {
+  description = "Private IP of master node"
+  value       = aws_instance.master.private_ip
 }
