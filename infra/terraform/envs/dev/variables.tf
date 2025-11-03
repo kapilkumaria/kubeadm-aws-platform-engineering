@@ -4,10 +4,20 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "project" {
+  default = "kubeadm-aws-platform"
+}
+
 variable "environment" {
   description = "Environment name (dev or prod)"
   type        = string
   default     = "dev"
+}
+
+variable "ami_id" {
+  description = "AMI ID for EC2 instances"
+  type        = string
+  default = "ami-0ecb62995f68bb549" # Ubuntu 24 AMI
 }
 
 variable "vpc_cidr" {
