@@ -45,14 +45,36 @@ module "master" {
   key_name               = var.key_name   
 }
 
-# EC2 Worker Module
-module "workers" {
+# Worker 1
+module "worker_1" {
   source                 = "../../modules/ec2-worker"
   project                = var.project
   environment            = var.environment
   ami_id                 = var.ami_id
   instance_type          = "t3.medium"
-  subnet_ids             = module.vpc.private_subnet_ids
+  subnet_id              = module.vpc.private_subnet_ids[0]
   vpc_security_group_ids = [module.security_groups.worker_sg_id]
   key_name               = var.key_name
+
+  tags = {
+    ManagedBy = "Terraform"
+    Name      = "${var.project}-${var.environment}-worker-1"
+  }
+}
+
+# Worker 2
+module "worker_2" {
+  source                 = "../../modules/ec2-worker"
+  project                = var.project
+  environment            = var.environment
+  ami_id                 = var.ami_id
+  instance_type          = "t3.medium"
+  subnet_id              = module.vpc.private_subnet_ids[1]
+  vpc_security_group_ids = [module.security_groups.worker_sg_id]
+  key_name               = var.key_name
+
+  tags = {
+    ManagedBy = "Terraform"
+    Name      = "${var.project}-${var.environment}-worker-2"
+  }
 }

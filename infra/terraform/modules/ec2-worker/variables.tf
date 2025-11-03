@@ -15,9 +15,9 @@ variable "instance_type" {
   default = "t3.medium" 
 }
 
-variable "subnet_ids" {
-  description = "List of private subnets to launch workers in"
-  type        = list(string)
+variable "subnet_id" {
+  description = "Subnet where worker EC2 will be launched"
+  type        = string
 }
 
 variable "vpc_security_group_ids" {
