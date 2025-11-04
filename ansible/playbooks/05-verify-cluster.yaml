@@ -1,15 +1,81 @@
 ---
-- name: Verify Kubernetes cluster is up and running
+- name: Verify Kubernetes Cluster Health
   hosts: master
   become: yes
 
+  vars:
+    kubeconfig_path: /etc/kubernetes/admin.conf
+    report_file: ./artifacts/cluster-status.txt
+
   tasks:
-    - name: Check nodes
+    - name: Check if Kubernetes API server is reachable
+      command: kubectl cluster-info
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: cluster_info
+      failed_when: "'running at' not in cluster_info.stdout"
+      changed_when: false
+
+    - name: Display Kubernetes cluster info
+      debug:
+        msg: "{{ cluster_info.stdout }}"
+
+    - name: Check node status
       command: kubectl get nodes -o wide
       environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: nodes_status
+      changed_when: false
 
-    - name: Check system pods
-      command: kubectl get pods -n kube-system -o wide
+    - name: Display node status
+      debug:
+        msg: "{{ nodes_status.stdout }}"
+
+    - name: Ensure all nodes are in Ready state
+      assert:
+        that:
+          - "'NotReady' not in nodes_status.stdout"
+        fail_msg: "One or more nodes are not Ready!"
+        success_msg: "All Kubernetes nodes are Ready."
+
+    - name: Check system pods across namespaces
+      command: kubectl get pods -A -o wide
       environment:
-        KUBECONFIG: /etc/kubernetes/admin.conf
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: pods_status
+      changed_when: false
+
+    - name: Display system pods
+      debug:
+        msg: "{{ pods_status.stdout }}"
+
+    - name: Ensure no pods are in CrashLoopBackOff or Pending
+      assert:
+        that:
+          - "'CrashLoopBackOff' not in pods_status.stdout"
+          - "'Pending' not in pods_status.stdout"
+        fail_msg: "Some pods are in CrashLoopBackOff or Pending state!"
+        success_msg: "All system pods are running fine."
+
+    - name: Save cluster status report locally
+      delegate_to: localhost
+      copy:
+        content: |
+          ===== Kubernetes Cluster Health Report =====
+          DATE: {{ lookup('pipe', 'date') }}
+
+          --- Cluster Info ---
+          {{ cluster_info.stdout }}
+
+          --- Node Status ---
+          {{ nodes_status.stdout }}
+
+          --- Pods Status ---
+          {{ pods_status.stdout }}
+
+        dest: "{{ report_file }}"
+        mode: "0644"
+
+    - name: Show report location
+      debug:
+        msg: "Cluster status report saved at {{ report_file }}"
