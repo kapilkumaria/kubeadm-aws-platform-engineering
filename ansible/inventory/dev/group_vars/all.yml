@@ -1,0 +1,4 @@
+kube_user: ubuntu
+pod_network_cidr: "192.168.0.0/16"
+cni: calico
+artifacts_dir: "./artifacts"

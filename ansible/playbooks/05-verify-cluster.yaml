@@ -1,0 +1,15 @@
+---
+- name: Verify Kubernetes cluster is up and running
+  hosts: master
+  become: yes
+
+  tasks:
+    - name: Check nodes
+      command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Check system pods
+      command: kubectl get pods -n kube-system -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf

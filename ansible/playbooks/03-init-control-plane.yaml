@@ -1,0 +1,173 @@
+---
+- name: Initialize Kubernetes control plane and install CNI
+  hosts: master
+  become: yes
+
+  vars:
+    kube_user: ubuntu
+    artifacts_dir: ./artifacts
+    pod_network_cidr: "192.168.0.0/16"
+    kubeconfig_path: /etc/kubernetes/admin.conf
+
+  pre_tasks:
+    - name: Ensure artifacts directory exists locally
+      file:
+        path: "{{ artifacts_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+
+    - name: Disable swap
+      command: swapoff -a
+
+    - name: Remove swap entry in /etc/fstab
+      replace:
+        path: /etc/fstab
+        regexp: '^(.+swap.+)$'
+        replace: '# \1'
+
+  tasks:
+    # 1. System prerequisites
+    - name: Load required kernel modules
+      copy:
+        dest: /etc/modules-load.d/kubernetes.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Load modules immediately
+      shell: |
+        modprobe overlay
+        modprobe br_netfilter
+
+    - name: Apply sysctl params for Kubernetes networking
+      copy:
+        dest: /etc/sysctl.d/kubernetes.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+
+    - name: Reload sysctl
+      command: sysctl --system
+
+    # 2. Containerd configuration
+    - name: Ensure containerd config directory exists
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Generate default containerd config
+      shell: "containerd config default > /etc/containerd/config.toml"
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Enable SystemdCgroup in containerd
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    # 3. Kubelet config for containerd
+    - name: Ensure kubelet drop-in directory exists
+      file:
+        path: /etc/systemd/system/kubelet.service.d
+        state: directory
+
+    - name: Configure kubelet to use containerd socket
+      copy:
+        dest: /etc/systemd/system/kubelet.service.d/20-containerd.conf
+        mode: "0644"
+        content: |
+          [Service]
+          Environment="KUBELET_EXTRA_ARGS=--container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+
+    - name: Reload systemd and restart kubelet
+      systemd:
+        daemon_reload: yes
+        name: kubelet
+        state: restarted
+        enabled: yes
+
+    # 4. Initialize control plane
+    - name: Initialize Kubernetes control plane
+      command: >
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --apiserver-advertise-address={{ ansible_host | default(inventory_hostname) }}
+        --cri-socket unix:///run/containerd/containerd.sock
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    # 5. Kubeconfig setup
+    - name: Ensure ubuntu .kube directory exists
+      file:
+        path: /home/{{ kube_user }}/.kube
+        state: directory
+        mode: "0755"
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+
+    - name: Copy Kubernetes admin.conf to ubuntu's kubeconfig
+      copy:
+        src: "{{ kubeconfig_path }}"
+        dest: "/home/{{ kube_user }}/.kube/config"
+        remote_src: yes
+        owner: "{{ kube_user }}"
+        group: "{{ kube_user }}"
+        mode: "0600"
+
+    # 6. Wait for API server
+    - name: Wait for API server to be reachable
+      uri:
+        url: "https://127.0.0.1:6443/healthz"
+        method: GET
+        validate_certs: no
+        status_code: 200
+      register: api_health
+      retries: 30
+      delay: 10
+      until: api_health.status == 200
+
+    # 7. Install Calico CNI
+    - name: Install Calico CNI
+      become_user: "{{ kube_user }}"
+      environment:
+        KUBECONFIG: "/home/{{ kube_user }}/.kube/config"
+      command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+
+    # 8. Wait for node Ready
+    - name: Wait for node to become Ready
+      shell: |
+        kubectl get nodes --no-headers | awk '{print $2}'
+      environment:
+        KUBECONFIG: "/home/{{ kube_user }}/.kube/config"
+      register: node_status
+      retries: 20
+      delay: 15
+      until: node_status.stdout.strip() == "Ready"
+
+    # 9. Capture and save join command
+    - name: Get kubeadm join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Save join command locally
+      delegate_to: localhost
+      become: false
+      copy:
+        content: "{{ join_command.stdout }}"
+        dest: "{{ artifacts_dir }}/kubeadm_join.sh"
+        mode: "0755"
+
+  post_tasks:
+    - name: Display join command
+      debug:
+        msg: "{{ join_command.stdout }}"

@@ -1,5 +1,5 @@
 - name: Install Kubernetes components (containerd, kubeadm, kubelet, kubectl)
-  hosts: all
+  hosts: kubernetes
   become: true
 
   tasks:
