@@ -78,3 +78,29 @@ module "worker_2" {
     Name      = "${var.project}-${var.environment}-worker-2"
   }
 }
+
+# Run Ansible inventory generation after terraform apply
+resource "null_resource" "generate_inventory" {
+  depends_on = [
+    module.bastion,
+    module.master,
+    module.worker_1,
+    module.worker_2,
+    module.vpc,               # NAT, subnets, RTs
+    module.security_groups    # optional but safe
+  ]
+
+  triggers = {
+    bastion  = module.bastion.public_ip
+    master   = module.master.private_ip
+    workers  = join(",", [
+      module.worker_1.private_ip, 
+      module.worker_2.private_ip
+    ])
+    run_id   = timestamp()    # always refreshes
+  }
+
+  provisioner "local-exec" {
+    command = "cd ../../../../ansible/scripts && python3 generate_inventory.py"
+  }
+}

@@ -1,0 +1,26 @@
+---
+- name: Join Worker Nodes to Kubernetes Cluster
+  hosts: workers
+  become: yes
+
+  vars:
+    join_command_file: "/home/ubuntu/kubeadm_join_command.sh"
+
+  tasks:
+    - name: Copy join command from master to local (Bastion)
+      delegate_to: master
+      become: yes
+      ansible.builtin.slurp:
+        src: /home/ubuntu/kubeadm_join_command.sh
+      register: join_cmd_data
+      run_once: true
+
+    - name: Set fact for join command
+      set_fact:
+        kube_join_cmd: "{{ join_cmd_data.content | b64decode }}"
+
+    - name: Join worker to cluster
+      ansible.builtin.shell: |
+        {{ kube_join_cmd }}
+      args:
+        executable: /bin/bash

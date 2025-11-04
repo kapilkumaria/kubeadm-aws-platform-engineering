@@ -1,0 +1,28 @@
+---
+plugin: community.general.terraform_state
+
+remote_state:
+  backend: s3
+  config:
+    bucket: "kapil-s3-bucket-for-kubeadm-cluster"
+    key: "kubeadm/dev/terraform.tfstate"
+    region: "us-east-1"
+
+# (Optional) Create groups dynamically based on tags
+keyed_groups:
+  - key: tags.Name
+    separator: "_"
+
+# Compose host variables (public if exists, otherwise private)
+compose:
+  ansible_host: >
+    {{
+      host.public_ip
+      if (host.public_ip is defined and host.public_ip | length > 0)
+      else host.private_ip
+    }}
+
+# Hostname priority
+hostnames:
+  - public_ip
+  - private_ip

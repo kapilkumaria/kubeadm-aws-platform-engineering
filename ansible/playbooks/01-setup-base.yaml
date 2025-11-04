@@ -1,0 +1,17 @@
+- name: Base setup for all servers
+  hosts: master, workers
+  become: yes
+  tasks:
+    - name: Update & Install dependencies
+      apt:
+        update_cache: yes
+        name:
+          - curl
+          - wget
+          - vim
+          - git
+          - net-tools
+          - apt-transport-https
+          - ca-certificates
+          - software-properties-common
+        state: present

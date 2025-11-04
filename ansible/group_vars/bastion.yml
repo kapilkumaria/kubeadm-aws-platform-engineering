@@ -1,0 +1,2 @@
+# Bastion itself is reachable directly (public IP). No ProxyJump for it.
+ansible_ssh_common_args: "-o ForwardAgent=yes"

@@ -1,0 +1,2 @@
+# Proxy to workers via the first bastion host
+ansible_ssh_common_args: "-o ForwardAgent=yes -o ProxyJump=ubuntu@{{ groups['bastion'][0] }}"

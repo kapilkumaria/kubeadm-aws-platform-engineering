@@ -42,3 +42,16 @@ output "worker_instance_ids" {
     module.worker_2.instance_id
   ]
 }
+
+# Ansible Dynamic Inventory Output
+output "ansible_inventory" {
+  description = "Terraform output for Ansible inventory"
+  value = {
+    bastion = module.bastion.public_ip
+    master  = module.master.private_ip
+    workers = [
+      module.worker_1.private_ip,
+      module.worker_2.private_ip
+    ]
+  }
+}
