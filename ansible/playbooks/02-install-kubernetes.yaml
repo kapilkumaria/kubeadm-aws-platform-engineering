@@ -3,6 +3,7 @@
   become: true
 
   tasks:
+    # Step 0: Disable swap
     - name: Disable swap
       command: swapoff -a
 
@@ -12,6 +13,59 @@
         regexp: '(^.*swap.*$)'
         replace: '# \1'
 
+    # Step 1: Remove old / wrong Kubernetes repositories BEFORE any apt update!
+    - name: Remove pkgs.k8s.io lines from /etc/apt/sources.list
+      lineinfile:
+        path: /etc/apt/sources.list
+        regexp: '.*pkgs.k8s.io.*'
+        state: absent
+
+    - name: Remove conflicting Kubernetes .list files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_fileglob:
+        - /etc/apt/sources.list.d/*kubernetes*.list
+        - /etc/apt/sources.list.d/*k8s*.list
+        - /etc/apt/sources.list.d/*pkgs.k8s*.list
+
+    # Remove old GPG key first
+    - name: Remove old Kubernetes GPG key (if exists)
+      file:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        state: absent
+
+    - name: Create keyrings directory for apt
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Kubernetes Release key
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
+        dest: /tmp/kubernetes-apt-keyring.gpg
+        mode: '0644'
+
+    - name: Convert and install GPG key to apt keyring
+      ansible.builtin.command:
+        cmd: "gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-apt-keyring.gpg"
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+
+    - name: Add Kubernetes apt repository (v1.29)
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+
+    # Step 2: Install required utilities
     - name: Install required packages
       apt:
         name:
@@ -22,58 +76,38 @@
         state: present
         update_cache: yes
 
-    # Step 1: Remove all Kubernetes repo entries from sources.list and sources.list.d
-    - name: Remove pkgs.k8s.io lines from /etc/apt/sources.list
-      lineinfile:
-        path: /etc/apt/sources.list
-        regexp: '.*pkgs.k8s.io.*'
-        state: absent
-
-    - name: Remove any conflicting Kubernetes .list files
-      file:
-        path: "{{ item }}"
-        state: absent
-      with_fileglob:
-        - /etc/apt/sources.list.d/*kubernetes*.list
-        - /etc/apt/sources.list.d/*k8s*.list
-        - /etc/apt/sources.list.d/*pkgs.k8s*.list
-
-    # Optional: Force cleanup if someone manually added the repo
-    - name: Ensure there are no duplicate Kubernetes entries left
-      command: bash -c "grep -R 'pkgs.k8s.io' /etc/apt || true"
-      register: k8s_repo_leftovers
-      changed_when: false
-
-    - debug:
-        msg: "Found leftover Kubernetes repo: {{ k8s_repo_leftovers.stdout }}"
-      when: k8s_repo_leftovers.stdout != ""
-
-    # Step 2: Recreate keyring directory
+    # Step 3: Create keyrings directory
     - name: Create /etc/apt/keyrings
       file:
         path: /etc/apt/keyrings
         state: directory
         mode: '0755'
 
-    # Step 3: Add official GPG key
-    - name: Add Kubernetes GPG key
+    # Step 4: Add Kubernetes official GPG key
+    - name: Download Kubernetes GPG key
       get_url:
         url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
-        dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        dest: /etc/apt/keyrings/kubernetes-apt-keyring
         mode: '0644'
 
-    # Step 4: Add correct Kubernetes repository
-    - name: Add stable Kubernetes apt repo
+    - name: Convert to dearmored GPG format
+      command: gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /etc/apt/keyrings/kubernetes-apt-keyring
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    # Step 5: Add correct Kubernetes apt repository
+    - name: Add Kubernetes apt repository
       copy:
         dest: /etc/apt/sources.list.d/kubernetes.list
         content: |
           deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
 
-    - name: apt update after fixing repo
+    # Step 6: Update apt cache after adding repo
+    - name: apt update after adding Kubernetes repo
       apt:
         update_cache: yes
 
-    # Step 5: Install Kubernetes tools + containerd
+    # Step 7: Install Kubernetes components + containerd
     - name: Install containerd, kubeadm, kubelet, kubectl
       apt:
         name:
@@ -83,6 +117,7 @@
           - kubectl
         state: present
 
+    # Step 8: Hold package versions
     - name: Hold Kubernetes packages
       dpkg_selections:
         name: "{{ item }}"
@@ -92,6 +127,7 @@
         - kubelet
         - kubectl
 
+    # Step 9: Enable services
     - name: Enable and start services
       service:
         name: "{{ item }}"
