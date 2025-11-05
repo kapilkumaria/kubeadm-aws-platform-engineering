@@ -1,130 +1,155 @@
-# 🚀 AWS Kubernetes Cluster Automation (Terraform + Ansible + kubeadm)
+# 🚀 Automated Kubernetes Cluster on AWS using Terraform + Ansible + kubeadm
 
-A fully automated, production-like Kubernetes cluster built on AWS using **Terraform**, **Ansible**, and **kubeadm**.
+![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4?logo=terraform&logoColor=white)
+![Ansible](https://img.shields.io/badge/Ansible-Automation-EE0000?logo=ansible&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-kubeadm-326CE5?logo=kubernetes&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Cloud-232F3E?logo=amazon-aws&logoColor=white)
 
-This project provisions infrastructure (VPC, Bastion, Master, Worker Nodes), installs Kubernetes using Ansible automation, and bootstraps the cluster with kubeadm.  
-However, the journey didn’t end perfectly — and that’s the best part of the story.
+This project automates a **production-like Kubernetes cluster on AWS** from scratch using:
+
+✔ **Terraform** – Infrastructure provisioning (Dev & Prod environments)  
+✔ **Ansible** – Automates installation + kubeadm cluster setup  
+✔ **kubeadm** – Initializes the master and joins worker nodes  
+✔ **Calico CNI** – Installed automatically via Ansible during control plane bootstrap  
 
 ---
-
 ## ✅ Project Overview
 
-### **🔹 Technologies Used**
-| Tool       | Purpose |
-|------------|---------------------------------------------------------------|
-| Terraform  | Provision AWS Infrastructure (Dev + Prod Environments)        |
-| Ansible    | Automate Kubernetes installation & configuration              |
-| kubeadm    | Initialize control plane & join worker nodes                  |
-| AWS EC2    | Master, Worker & Bastion Nodes                                |
-| S3 + DynamoDB | Remote backend for Terraform state management             |
+| Component         | Purpose |
+|------------------|---------|
+| **Terraform**    | Creates VPC, Bastion Host, 1 Master, 2 Workers |
+| **Dev & Prod Environments** | Isolated workspaces under `infra/terraform/envs/` |
+| **Dynamic Inventory** | Auto-generated `inventory.ini` from Terraform output |
+| **Ansible Playbooks** | Installs Docker, containerd, kubeadm, kubelet, CNI |
+| **Calico CNI**   | Installed automatically via Ansible in `03-init-control-plane.yaml` |
+| **Challenge Faced** | Calico CNI Pods kept crashing due to AWS networking (IPIP/BGP mismatch) |
 
 ---
 
-## 🛠 Infrastructure Architecture
-
-### **Terraform (IaC)**
-✔ Separate workspaces for Dev & Prod  
-✔ Provisions:
-- VPC & Subnets (Public + Private)
-- Bastion Host (SSH Gateway)
-- 1 Master Node, 2 Worker Nodes  
-✔ Remote State stored in S3 (state lock via DynamoDB)  
-✔ Outputs dynamic inventory for Ansible
-
-```
-infra/
-└── terraform/
-├── envs/      
-│   ├── dev/
-|   └── prod/
-├── modules/
-└── backend (S3 + DynamoDB)
-```
-
----
-
-### **Ansible (Cluster Setup Automation)**
-
-✔ Automatically generates `inventory.ini` using Terraform output  
-✔ Playbooks executed in sequence:
-
-```
-ansible/
-└── playbooks/
-├── 01-setup-base.yaml # OS hardening & dependencies
-├── 02-install-kubernetes.yaml # kubeadm, kubelet, kubectl
-├── 03-init-control-plane.yaml # kubeadm init
-├── 04-join-workers.yaml # kubeadm join
-├── 05-verify-cluster.yaml # Health checks
-└── 06-fix-networking.yaml # CNI configuration
-```
-
----
-
-## ⚙️ kubeadm Bootstrap Summary
-
-✔ kubeadm init → API Server, etcd, scheduler & controller running  
-✔ kubeconfig copied to Bastion for kubectl access  
-✔ Worker nodes auto-joined using `kubeadm join` token  
-✔ Cluster reachable via Bastion → `kubectl get nodes`
-
----
-
-## ⚠️ Real-World Issue Faced
-
-| Problem | Description |
-|---------|-------------|
-| ❌ Calico CNI Crash | Pods stuck in CrashLoopBackOff due to IP-in-IP routing & BGP misconfig in AWS VPC |
-| ❌ No Pod Networking | Master & Worker nodes joined, but **no pod-to-pod network** |
-| ❌ Manual kubeconfig & cert handling | Needed manual transfer of kubeconfig, tokens & certs |
-| ❌ No Self-Healing | Unlike EKS, control plane failures required manual fixes |
-
-> Instead of spending days debugging networking, I documented the architecture, root cause, and moved forward — because DevOps is about learning, iterating, and shipping fast.
-
----
-
-## 💡 Why EKS is Better for Production
-
-| Feature | Self-Managed (kubeadm) | AWS EKS |
-|---------|--------------------------|---------|
-| Control Plane | Manual setup & maintenance | Fully managed by AWS |
-| Networking | Calico / Flannel config issues | AWS VPC CNI (works out of the box) |
-| Upgrades | Manual & risky | One-click version upgrade |
-| IAM Integration | Manual RBAC config | Native IAM for Service Accounts |
-| Monitoring | Custom tools required | CloudWatch, audit logs built-in |
-
----
-
-## 📌 Architecture Diagram
+## 🏗️ Architecture Diagram
 
 ![Architecture of
 kubeadm-aws-platform-engineering](/images/diagram-kubeadm-aws-platform-engineering.png)
 
+```
+📁 images/
+    |
+    └── diagram-kubeadm-aws-platform-engineering.png
+```
+## 📁 Repository Structure
 
----
+```
+├── infra/
+│   └── terraform/
+│       ├── envs/
+│       │   ├── dev/
+│       │   └── prod/
+│       └── modules/
+├── ansible/
+│   ├── inventory/dev/inventory.ini   # Auto-generated
+│   └── playbooks/
+│       ├── 01-setup-base.yaml
+│       ├── 02-install-k8s.yaml
+│       ├── 03-init-control-plane.yaml   # Installs Calico CNI here
+│       ├── 04-join-workers.yaml
+│       ├── 05-verify-cluster.yaml
+│       └── 06-fix-network.yaml
+```
 
-## 🎯 Next Steps
+## 🚀 Deployment Guide
+### 1️⃣ Provision AWS Infrastructure (Terraform)
 
-- [ ] Migrate to **Terraform + AWS EKS**  
-- [ ] Deploy **GCP Online Boutique microservices**  
-- [ ] CI/CD using **GitHub Actions + Vault**  
-- [ ] **Karpenter** for Auto-scaling  
-- [ ] Integrate **SonarQube + Nexus + AWS ECR**
+```
+cd infra/terraform/envs/dev
+terraform init                     # Initialize backend and providers
+terraform apply -auto-approve      # Create VPC, Bastion, Master, Worker nodes
+```
 
----
+### 2️⃣ SSH into Bastion Host
 
-## 🤝 Contribute / Connect
+```
+ssh-add ~/.ssh/kubeadm-aws-key         # Add SSH key to agent
+ssh -A ubuntu@<bastion_public_ip>      # Connect to bastion
+```
+### 3️⃣ Run Ansible – Full Kubernetes Setup
 
-Have ideas or want the code early? Let me know!
+```
+ansible-playbook -i inventory/dev/inventory.ini playbooks/01-setup-base.yaml
+# Sets hostname, disables swap, updates packages
 
-📬 **Connect on LinkedIn:** www.linkedin.com/in/kkintech15
-⭐ **Star this repo** if you find it helpful!
+ansible-playbook -i inventory/dev/inventory.ini playbooks/02-install-k8s.yaml
+# Installs containerd, kubelet, kubeadm, kubectl
 
----
+ansible-playbook -i inventory/dev/inventory.ini playbooks/03-init-control-plane.yaml
+# kubeadm init + applies Calico CNI automatically
+# Also saves join command → artifacts/kubeadm_join.sh
 
-## 🏷️ Tags
+ansible-playbook -i inventory/dev/inventory.ini playbooks/04-join-workers.yaml
+# Uses saved join command to add workers to cluster
+```
+### 4️⃣ Verify Cluster
 
-`#DevOps` `#Terraform` `#Ansible` `#Kubernetes` `#kubeadm` `#AWS` `#EKS` `#PlatformEngineering` `#IaC`
+```
+kubectl get nodes        # Master + Worker nodes should show "Ready"
+kubectl get pods -A      # Calico, CoreDNS, kube-system pods running
+```
 
----
+## ⚠ Challenges & Lessons Learned
 
+| Challenge                       | What Happened?                                            |
+| ------------------------------- | --------------------------------------------------------- |
+| ❗ Calico CNI Pods kept crashing | Due to AWS VPC routing + IP-in-IP tunneling conflict      |
+| ❗ Manual kubeconfig handling    | Had to copy `/etc/kubernetes/admin.conf` to user manually |
+| ❗ No HA Control Plane           | kubeadm master is a single point of failure               |
+| ❗ Requires SSH Debugging        | No CloudWatch or managed logging like EKS                 |
+
+
+## ✅ Why AWS EKS is Easier for Production
+
+✔ AWS manages control plane, etcd, certificates
+
+✔ VPC CNI works out-of-the-box (no Calico issues)
+
+✔ IAM Roles for Service Accounts, Cluster Autoscaler support
+
+✔ Built-in CloudWatch logging, no SSH into nodes
+
+✔ Let’s focus on CI/CD, security, apps — not cluster plumbing
+
+## 🧹 Cleanup & Destroy Resources 
+### ✅ Destroy infrastructure via Terraform:
+
+```
+cd infra/terraform/envs/dev
+terraform destroy -auto-approve
+```
+### ✅ Optional manual cleanup:
+
+
+🔹Delete SSH key pair if unused
+
+🔹Remove ~/.kube/config from bastion/local machine
+
+🔹Release Elastic IPs, delete Route53 records
+
+🔹Delete S3 backend & DynamoDB state lock table (if used)
+
+### 🎯 Next Steps
+
+🔹 Terraform + AWS EKS (Managed Kubernetes)
+
+🔹 Deploy GCP Online Boutique microservices
+
+🔹 GitHub Actions + Vault for CI/CD secrets
+
+🔹 Karpenter autoscaling + SonarQube + Nexus + ECR
+
+## ⭐ Like This Project?
+
+If this helped you, feel free to:
+
+  ⭐ Star the repository
+
+  🛠️ Fork and build on top of it
+
+  🤝 Connect & collaborate
